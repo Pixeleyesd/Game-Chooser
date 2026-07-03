@@ -1,0 +1,84 @@
+#include <Arduino.h>
+#include <AiEsp32RotaryEncoder.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+#define ROTARY_ENCODER_A_PIN 4
+#define ROTARY_ENCODER_B_PIN 16
+#define ROTARY_ENCODER_BUTTON_PIN 17
+#define ROTARY_ENCODER_VCC_PIN -1
+#define ROTARY_ENCODER_STEPS 4
+
+AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN, ROTARY_ENCODER_BUTTON_PIN, ROTARY_ENCODER_VCC_PIN, ROTARY_ENCODER_STEPS);
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+void IRAM_ATTR readEncoderISR() { rotaryEncoder.readEncoder_ISR(); }
+void IRAM_ATTR readButtonISR()  { rotaryEncoder.readButton_ISR(); }
+
+int secondsLeft = 30 * 60;
+int lastShownSeconds = -1;
+bool running = false;
+unsigned long lastTick = 0;
+
+void setup() {
+  Serial.begin(115200);
+  lcd.init();
+  lcd.backlight();
+
+  rotaryEncoder.begin();
+  rotaryEncoder.setup(readEncoderISR, readButtonISR);
+
+  lcd.setCursor(0, 0);
+  lcd.print("[click] start");
+}
+
+void loop() {
+  if (rotaryEncoder.isEncoderButtonClicked()) {
+    if (secondsLeft == 0) {
+      secondsLeft = 30 * 60;
+    }
+    running = !running;
+    lastTick = millis();
+
+    lcd.setCursor(0, 0);
+    if (running) {
+      lcd.print("[click] pause ");
+    } else {
+      lcd.print("[click] resume");
+    }
+  }
+
+  if (running && millis() - lastTick >= 1000) {
+    lastTick = lastTick + 1000;
+    secondsLeft = secondsLeft - 1;
+
+    if (secondsLeft <= 0) {
+      secondsLeft = 0;
+      running = false;
+      lcd.setCursor(0, 0);
+      lcd.print("done");
+    }
+  }
+
+  if (secondsLeft != lastShownSeconds) {
+    lastShownSeconds = secondsLeft;
+
+    int mins = secondsLeft / 60;
+    int secs = secondsLeft % 60;
+
+    lcd.setCursor(0, 1);
+
+    if (mins < 10) {
+      lcd.print("0");
+    }
+    lcd.print(mins);
+
+    lcd.print(":");
+
+    if (secs < 10) {
+      lcd.print("0");
+    }
+    lcd.print(secs);
+  }
+}

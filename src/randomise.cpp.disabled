@@ -1,0 +1,46 @@
+#include <Arduino.h>
+#include <AiEsp32RotaryEncoder.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+#define ROTARY_ENCODER_A_PIN 4
+#define ROTARY_ENCODER_B_PIN 16
+#define ROTARY_ENCODER_BUTTON_PIN 17
+#define ROTARY_ENCODER_VCC_PIN -1
+#define ROTARY_ENCODER_STEPS 4
+
+AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN, ROTARY_ENCODER_BUTTON_PIN, ROTARY_ENCODER_VCC_PIN, ROTARY_ENCODER_STEPS);
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+void IRAM_ATTR readEncoderISR() { rotaryEncoder.readEncoder_ISR(); }
+void IRAM_ATTR readButtonISR()  { rotaryEncoder.readButton_ISR(); }
+
+void setup() {
+  Serial.begin(115200);
+
+  lcd.init();
+  lcd.backlight();
+
+  rotaryEncoder.begin();
+  rotaryEncoder.setup(readEncoderISR, readButtonISR);
+
+  randomSeed(analogRead(34));
+
+  lcd.setCursor(0, 0);
+  lcd.print("Press button to");
+  lcd.setCursor(0, 1);
+  lcd.print("randomise!");
+}
+
+void loop() {
+  if (rotaryEncoder.isEncoderButtonClicked()) {
+    int result = random(1, 6);
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Random (1-5):");
+    lcd.setCursor(0, 1);
+    lcd.print(result);
+  }
+}

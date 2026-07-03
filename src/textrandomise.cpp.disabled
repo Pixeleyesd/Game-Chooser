@@ -1,0 +1,114 @@
+#include <Arduino.h>
+#include <AiEsp32RotaryEncoder.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+#define ROTARY_ENCODER_A_PIN 4
+#define ROTARY_ENCODER_B_PIN 16
+#define ROTARY_ENCODER_BUTTON_PIN 17
+#define ROTARY_ENCODER_VCC_PIN -1
+#define ROTARY_ENCODER_STEPS 4
+
+AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(
+  ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN,
+  ROTARY_ENCODER_BUTTON_PIN, ROTARY_ENCODER_VCC_PIN,
+  ROTARY_ENCODER_STEPS
+);
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Gamezlist
+const char* games[] = {
+  "Minecraft",
+  "Roblox",
+  "Doom (2016)",
+  "Doom Eternal",
+  "Doom: The Dark Ages",
+  "Doom 1",
+  "Doom 2",
+  "Doom 3",
+  "Flipping Is Hard",
+  "Celeste",
+  "It Takes Two",
+  "FPS Chess",
+  "Upload Labs",
+  "Rounds",
+  "Megabonk",
+  "Outer Wilds",
+  "Unfair Flips",
+  "Barro GT",
+  "Schedule I",
+  "Portal",
+  "Portal 2",
+  "Half Life",
+  "Half Life 2",
+};
+
+// cool auto game counter
+const int gameCount = sizeof(games) / sizeof(games[0]);
+
+void IRAM_ATTR readEncoderISR() { rotaryEncoder.readEncoder_ISR(); }
+void IRAM_ATTR readButtonISR()  { rotaryEncoder.readButton_ISR(); }
+
+// Prints "Play [game]" across two lines, breaking at a word boundary.
+// "Play " is 5 chars, so line 1 has 11 chars left for the game name.
+void printGame(String game) {
+  String full = "Play " + game;
+
+  if (full.length() <= 16) {
+    // Entire thing fits on one line
+    lcd.setCursor(0, 0);
+    lcd.print(full);
+    return;
+  }
+
+  // Find the latest space at or before column 16 to break on a word boundary
+  int breakAt = -1;
+  for (int i = 15; i >= 0; i--) {
+    if (full.charAt(i) == ' ') {
+      breakAt = i;
+      break;
+    }
+  }
+
+  if (breakAt == -1) {
+    // No space found, hard cut at 16
+    lcd.setCursor(0, 0);
+    lcd.print(full.substring(0, 16));
+    lcd.setCursor(0, 1);
+    lcd.print(full.substring(16));
+  } else {
+    lcd.setCursor(0, 0);
+    lcd.print(full.substring(0, breakAt));
+    lcd.setCursor(0, 1);
+    lcd.print(full.substring(breakAt + 1)); // +1 skips the space
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  lcd.init();
+  lcd.backlight();
+
+  rotaryEncoder.begin();
+  rotaryEncoder.setup(readEncoderISR, readButtonISR);
+
+  // seed random from floating analog pin for better randomness
+  randomSeed(analogRead(34));
+
+  lcd.setCursor(0, 0);
+  lcd.print("Press button to");
+  lcd.setCursor(0, 1);
+  lcd.print("pick a game!");
+}
+
+void loop() {
+  if (rotaryEncoder.isEncoderButtonClicked()) {
+    int index = random(0, gameCount);
+    String game = String(games[index]);
+
+    lcd.clear();
+    printGame(game);
+  }
+}

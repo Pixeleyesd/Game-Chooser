@@ -1,0 +1,95 @@
+#include <Arduino.h>
+#include <AiEsp32RotaryEncoder.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+#define ROTARY_ENCODER_A_PIN 4
+#define ROTARY_ENCODER_B_PIN 16
+#define ROTARY_ENCODER_BUTTON_PIN 17
+#define ROTARY_ENCODER_VCC_PIN -1
+#define ROTARY_ENCODER_STEPS 4
+
+AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN, ROTARY_ENCODER_BUTTON_PIN, ROTARY_ENCODER_VCC_PIN, ROTARY_ENCODER_STEPS);
+
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+
+void IRAM_ATTR readEncoderISR() { rotaryEncoder.readEncoder_ISR(); }
+void IRAM_ATTR readButtonISR()  { rotaryEncoder.readButton_ISR(); }
+
+const int TIMER_SECONDS = 30 * 60;
+
+#include <Arduino.h>
+#include <AiEsp32RotaryEncoder.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+#define ROTARY_ENCODER_A_PIN 4
+#define ROTARY_ENCODER_B_PIN 16
+#define ROTARY_ENCODER_BUTTON_PIN 17
+#define ROTARY_ENCODER_VCC_PIN -1
+#define ROTARY_ENCODER_STEPS 4
+
+AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN, ROTARY_ENCODER_BUTTON_PIN, ROTARY_ENCODER_VCC_PIN, ROTARY_ENCODER_STEPS);
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+const char* menuItems[] = { "Settings", "Brightness", "Volume", "Wi-Fi", "Bluetooth", "Restart" };
+const int MENU_LENGTH = 6;
+const int LCD_ROWS = 2;
+
+int selectedIndex = 0;
+int scrollOffset = 0;
+
+void IRAM_ATTR readEncoderISR() { rotaryEncoder.readEncoder_ISR(); }
+void IRAM_ATTR readButtonISR()  { rotaryEncoder.readButton_ISR(); }
+
+void renderMenu() {
+  lcd.clear();
+  for (int row = 0; row < LCD_ROWS; row++) {
+    int i = scrollOffset + row;
+    if (i >= MENU_LENGTH) break;
+    lcd.setCursor(0, row);
+    if (i == selectedIndex) {
+      lcd.print("> ");
+    } else {
+      lcd.print("  ");
+    }
+    lcd.print(menuItems[i]);
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  lcd.init();
+  lcd.backlight();
+
+  rotaryEncoder.begin();
+  rotaryEncoder.setup(readEncoderISR, readButtonISR);
+  rotaryEncoder.setBoundaries(0, MENU_LENGTH - 1, true);
+  rotaryEncoder.setAcceleration(150);
+
+  renderMenu();
+}
+
+void loop() {
+  if (rotaryEncoder.encoderChanged()) {
+    selectedIndex = rotaryEncoder.readEncoder();
+
+    if (selectedIndex < scrollOffset)
+      scrollOffset = selectedIndex;
+    else if (selectedIndex >= scrollOffset + LCD_ROWS)
+      scrollOffset = selectedIndex - LCD_ROWS + 1;
+
+    renderMenu();
+  }
+
+  if (rotaryEncoder.isEncoderButtonClicked()) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Selected:");
+    lcd.setCursor(0, 1);
+    lcd.print(menuItems[selectedIndex]);
+    delay(1200);
+    renderMenu();
+  }
+}
