@@ -12,7 +12,6 @@
 #define POWER_LED_PIN 2
 
 // GM009605 0.96" oled, ssd1306 driver, 128x64
-// most of these are sh1106 clones though so swap the driver if display.begin() fails
 #define OLED_SDA_PIN 21
 #define OLED_SCK_PIN 22
 #define OLED_WIDTH 128
@@ -31,8 +30,8 @@ Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET);
 // keeping the same 16x2 character grid the old lcd used so all the menu math
 // below stays untouched. size 1 font is 6x8px so this only uses the top left
 // corner of the screen, plenty of room left under it if you ever want more rows
-const int LCD_COLS = 16;
-const int LCD_ROWS = 2;
+const int LCD_COLS = 32;
+const int LCD_ROWS = 8;
 const int CHAR_W = 6;
 const int CHAR_H = 8;
 
