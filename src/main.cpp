@@ -1,14 +1,24 @@
 #include <Arduino.h>
 #include <AiEsp32RotaryEncoder.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
 #define ROTARY_ENCODER_A_PIN 4
 #define ROTARY_ENCODER_B_PIN 16
 #define ROTARY_ENCODER_BUTTON_PIN 17
 #define ROTARY_ENCODER_VCC_PIN -1
 #define ROTARY_ENCODER_STEPS 4
-#define POWER_LED_PIN 2 
+#define POWER_LED_PIN 2
+
+// GM009605 0.96" oled, ssd1306 driver, 128x64
+// most of these are sh1106 clones though so swap the driver if display.begin() fails
+#define OLED_SDA_PIN 21
+#define OLED_SCK_PIN 22
+#define OLED_WIDTH 128
+#define OLED_HEIGHT 64
+#define OLED_RESET -1
+#define OLED_I2C_ADDR 0x3C
 
 AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(
   ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN,
@@ -16,10 +26,20 @@ AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(
   ROTARY_ENCODER_STEPS
 );
 
-LiquidCrystal_I2C lcd(0x27, 16, 2);
+Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET);
 
+// keeping the same 16x2 character grid the old lcd used so all the menu math
+// below stays untouched. size 1 font is 6x8px so this only uses the top left
+// corner of the screen, plenty of room left under it if you ever want more rows
 const int LCD_COLS = 16;
 const int LCD_ROWS = 2;
+const int CHAR_W = 6;
+const int CHAR_H = 8;
+
+// screen auto off after being idle for this long, to save power
+const unsigned long SCREEN_TIMEOUT_MS = 5UL * 60UL * 1000UL; // 5 min
+unsigned long lastActivityTime = 0;
+bool screenAsleep = false;
 
 void IRAM_ATTR readEncoderISR() { rotaryEncoder.readEncoder_ISR(); }
 void IRAM_ATTR readButtonISR()  { rotaryEncoder.readButton_ISR(); }
@@ -30,7 +50,7 @@ const int PS_COUNT = 8;
 const char* psModels[PS_COUNT] = { "PSTV", "PS Vita", "PSP", "PS1", "PS2", "PS3", "PS4", "PS5" };
 bool psOwned[PS_COUNT] = { false };
 
-const int XBOX_COUNT = 6;x`
+const int XBOX_COUNT = 6;
 const char* xboxModels[XBOX_COUNT] = { "OG Xbox", "Xbox 360", "Xbox One S", "Xbox One X", "Xbox Series S", "Xbox Series X" };
 bool xboxOwned[XBOX_COUNT] = { false };
 
@@ -44,7 +64,7 @@ bool nintendoOwned[NINTENDO_COUNT] = { false };
 bool computerOwned = false;
 
 const int GAMES_PER_CATEGORY = 20;
-
+  
 const char* xboxGames[GAMES_PER_CATEGORY] = {
   "Halo Infinite", "Forza Horizon 5", "Gears 5", "Sea of Thieves", "Starfield",
   "Fable", "Psychonauts 2", "Doom Eternal", "Ori & Will of Wisps", "Hi-Fi Rush",
@@ -72,7 +92,7 @@ const char* pcGames[GAMES_PER_CATEGORY] = {
   "Dota 2", "Left 4 Dead 2", "Terraria", "Stardew Valley", "Phasmophobia",
   "Rust", "Garry's Mod", "Civilization VI", "The Witcher 3", "Factorio"
 };
-
+  
 void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrollOffset, bool* ownedFlags);
 int  selectFromMenu(const char* items[], int itemCount, bool* ownedFlags);
 void flushEncoderEvents();
@@ -81,6 +101,10 @@ bool waitForClickOrRotate();
 void showMessage(const char* line0, const char* line1, int delayMs);
 void showResultAndWait(const char* line0, String line1);
 void printWrapped(String full);
+
+void registerActivity();
+void sleepScreenIfIdle();
+bool wakeScreenIfAsleep();
 
 int  categoryModelCount(Category cat);
 const char** categoryModelNames(Category cat);
@@ -102,27 +126,53 @@ void handleConfigOption();
 bool configSubmenuPickOne(Category cat);
 bool askAddMore();
 
+// power saving stuff
+
+void registerActivity() {
+  lastActivityTime = millis();
+}
+
+void sleepScreenIfIdle() {
+  if (!screenAsleep && millis() - lastActivityTime > SCREEN_TIMEOUT_MS) {
+    display.ssd1306_command(SSD1306_DISPLAYOFF);
+    screenAsleep = true;
+  }
+}
+
+// wakes the screen back up if it was off, returns true if it did.
+// caller should treat that input as just a wake up, not a real action
+bool wakeScreenIfAsleep() {
+  if (screenAsleep) {
+    display.ssd1306_command(SSD1306_DISPLAYON);
+    screenAsleep = false;
+    registerActivity();
+    return true;
+  }
+  return false;
+}
+
 void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrollOffset, bool* ownedFlags) {
-  lcd.clear();
+  display.clearDisplay();
   for (int row = 0; row < LCD_ROWS; row++) {
     int i = scrollOffset + row;
     if (i >= itemCount) break;
 
-    lcd.setCursor(0, row);
+    display.setCursor(0, row * CHAR_H);
 
     bool isOwned = ownedFlags != nullptr && ownedFlags[i];
     if (i == selectedIndex) {
-      lcd.print(isOwned ? ">*" : "> ");
+      display.print(isOwned ? ">*" : "> ");
     } else {
-      lcd.print(isOwned ? " *" : "  ");
+      display.print(isOwned ? " *" : "  ");
     }
 
     String label = String(items[i]);
     if (label.length() > (unsigned int)(LCD_COLS - 2)) {
       label = label.substring(0, LCD_COLS - 2);
     }
-    lcd.print(label);
+    display.print(label);
   }
+  display.display();
 }
 
 int selectFromMenu(const char* items[], int itemCount, bool* ownedFlags) {
@@ -136,7 +186,21 @@ int selectFromMenu(const char* items[], int itemCount, bool* ownedFlags) {
   renderMenu(items, itemCount, index, scrollOffset, ownedFlags);
 
   while (true) {
-    if (rotaryEncoder.encoderChanged()) {
+    sleepScreenIfIdle();
+
+    bool rotated = rotaryEncoder.encoderChanged();
+    bool clicked = rotaryEncoder.isEncoderButtonClicked();
+
+    if (!rotated && !clicked) continue;
+
+    if (wakeScreenIfAsleep()) {
+      renderMenu(items, itemCount, index, scrollOffset, ownedFlags); // just redraw, ignore this input
+      continue;
+    }
+
+    registerActivity();
+
+    if (rotated) {
       index = (int)rotaryEncoder.readEncoder();
 
       if (index < scrollOffset) {
@@ -147,7 +211,7 @@ int selectFromMenu(const char* items[], int itemCount, bool* ownedFlags) {
       renderMenu(items, itemCount, index, scrollOffset, ownedFlags);
     }
 
-    if (rotaryEncoder.isEncoderButtonClicked()) {
+    if (clicked) {
       return index;
     }
   }
@@ -161,8 +225,19 @@ void flushEncoderEvents() {
 bool waitForClickOrRotate() {
   flushEncoderEvents();
   while (true) {
-    if (rotaryEncoder.isEncoderButtonClicked()) return true;
-    if (rotaryEncoder.encoderChanged()) return false;
+    sleepScreenIfIdle();
+
+    bool clicked = rotaryEncoder.isEncoderButtonClicked();
+    bool rotated = rotaryEncoder.encoderChanged();
+
+    if (!clicked && !rotated) continue;
+
+    if (wakeScreenIfAsleep()) continue; // just a wake up, not a real input
+
+    registerActivity();
+
+    if (clicked) return true;
+    if (rotated) return false;
   }
 }
 
@@ -171,29 +246,31 @@ void waitForAnyInput() {
 }
 
 void showMessage(const char* line0, const char* line1, int delayMs) {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(line0);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print(line0);
   if (line1 != nullptr && strlen(line1) > 0) {
-    lcd.setCursor(0, 1);
-    lcd.print(line1);
+    display.setCursor(0, CHAR_H);
+    display.print(line1);
   }
+  display.display();
   if (delayMs > 0) delay(delayMs);
 }
 
 void showResultAndWait(const char* line0, String line1) {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(line0);
-  lcd.setCursor(0, 1);
-  lcd.print(line1);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print(line0);
+  display.setCursor(0, CHAR_H);
+  display.print(line1);
+  display.display();
   waitForAnyInput();
 }
 
 void printWrapped(String full) {
   if (full.length() <= (unsigned int)LCD_COLS) {
-    lcd.setCursor(0, 0);
-    lcd.print(full);
+    display.setCursor(0, 0);
+    display.print(full);
     return;
   }
 
@@ -209,15 +286,15 @@ void printWrapped(String full) {
   unsigned int maxLen = (unsigned int)(LCD_COLS * LCD_ROWS);
 
   if (breakAt == -1) {
-    lcd.setCursor(0, 0);
-    lcd.print(full.substring(0, LCD_COLS));
-    lcd.setCursor(0, 1);
-    lcd.print(full.substring(LCD_COLS, min(total, maxLen)));
+    display.setCursor(0, 0);
+    display.print(full.substring(0, LCD_COLS));
+    display.setCursor(0, CHAR_H);
+    display.print(full.substring(LCD_COLS, min(total, maxLen)));
   } else {
-    lcd.setCursor(0, 0);
-    lcd.print(full.substring(0, breakAt));
-    lcd.setCursor(0, 1);
-    lcd.print(full.substring(breakAt + 1, min(total, maxLen)));
+    display.setCursor(0, 0);
+    display.print(full.substring(0, breakAt));
+    display.setCursor(0, CHAR_H);
+    display.print(full.substring(breakAt + 1, min(total, maxLen)));
   }
 }
 
@@ -334,11 +411,12 @@ void removeAllDevices() {
 
 // switched on, welcome screen, turn on power led
 void showWelcomeScreen() {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Game randomiser");
-  lcd.setCursor(0, 1);
-  lcd.print("Input to start");
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("Game randomiser");
+  display.setCursor(0, CHAR_H);
+  display.print("Input to start");
+  display.display();
   waitForAnyInput();
 }
 
@@ -367,18 +445,20 @@ void handleGameOption() {
   pickRandomOwnedDevice(cat, modelIndex);
   const char* model = modelNameFor(cat, modelIndex);
 
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(categoryName(cat));
-  lcd.setCursor(0, 1);
-  lcd.print(model);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print(categoryName(cat));
+  display.setCursor(0, CHAR_H);
+  display.print(model);
+  display.display();
   delay(1200);
 
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(model);
-  lcd.setCursor(0, 1);
-  lcd.print("Click to choose!");
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print(model);
+  display.setCursor(0, CHAR_H);
+  display.print("Click to choose!");
+  display.display();
 
   if (!waitForClickOrRotate()) {
     return;
@@ -386,8 +466,9 @@ void handleGameOption() {
 
   while (true) {
     const char* game = pickRandomGameForCategory(cat);
-    lcd.clear();
+    display.clearDisplay();
     printWrapped(String("Play ") + String(game));
+    display.display();
 
     if (!waitForClickOrRotate()) {
       return;
@@ -466,8 +547,17 @@ void setup() {
   pinMode(POWER_LED_PIN, OUTPUT);
   digitalWrite(POWER_LED_PIN, LOW);
 
-  lcd.init();
-  lcd.backlight();
+  Wire.begin(OLED_SDA_PIN, OLED_SCK_PIN);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR)) {
+    Serial.println("oled not found, check wiring/address");
+    while (true) delay(1000);
+  }
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+  display.cp437(true);
+  display.clearDisplay();
+  display.display();
 
   rotaryEncoder.begin();
   rotaryEncoder.setup(readEncoderISR, readButtonISR);
@@ -475,6 +565,7 @@ void setup() {
 
   randomSeed(analogRead(34));
 
+  registerActivity();
   showWelcomeScreen();
   digitalWrite(POWER_LED_PIN, HIGH);
 }
