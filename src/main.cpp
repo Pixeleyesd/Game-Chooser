@@ -27,10 +27,8 @@ AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(
 
 Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET);
 
-// keeping the same 16x2 character grid the old lcd used so all the menu math
-// below stays untouched. size 1 font is 6x8px so this only uses the top left
-// corner of the screen, plenty of room left under it if you ever want more rows
-const int LCD_COLS = 32;
+// 128px wide / 6px per char = 21 cols. 64px tall / 8px per char = 8 rows
+const int LCD_COLS = 21;
 const int LCD_ROWS = 8;
 const int CHAR_W = 6;
 const int CHAR_H = 8;
@@ -62,38 +60,156 @@ bool nintendoOwned[NINTENDO_COUNT] = { false };
 
 bool computerOwned = false;
 
-const int GAMES_PER_CATEGORY = 20;
-  
-const char* xboxGames[GAMES_PER_CATEGORY] = {
-  "Halo Infinite", "Forza Horizon 5", "Gears 5", "Sea of Thieves", "Starfield",
-  "Fable", "Psychonauts 2", "Doom Eternal", "Ori & Will of Wisps", "Hi-Fi Rush",
-  "Quantum Break", "Sunset Overdrive", "State of Decay 2", "Scorn", "Pentiment",
-  "Ryse", "Killer Instinct", "Redfall", "Avowed", "THPS 1+2 Remake"
+// each console gets its own game list now instead of sharing one per brand.
+// 8 games per list to keep things simple. consoles that share the exact same library in real life (PSTV/Vita, Xbox One S/X, Series S/X) just point at the same array below instead of duplicating it
+
+const int GAMES_PER_MODEL = 8;
+
+const char* nesGames[GAMES_PER_MODEL] = {
+  "Super Mario Bros.", "The Legend of Zelda", "Metroid", "Mega Man 2",
+  "Duck Hunt", "Castlevania", "Kirby's Adventure", "Contra"
 };
 
-const char* nintendoGames[GAMES_PER_CATEGORY] = {
-  "Zelda: TOTK", "Zelda: BOTW", "Super Mario Odyssey", "Smash Ultimate", "Mario Kart 8",
-  "Metroid Dread", "Animal Crossing", "Pokemon Scarlet", "Luigi Mansion 3", "Splatoon 3",
-  "Fire Emblem Eng", "Xenoblade 3", "DK Tropical Freeze", "Pikmin 4", "Mario Wonder",
-  "Paper Mario TTYD", "Metroid Prime Rmstr", "Kirby Forgotten Land", "Bayonetta 3", "Astral Chain"
+const char* snesGames[GAMES_PER_MODEL] = {
+  "Super Mario World", "The Legend of Zelda: A Link to the Past", "Super Metroid", "Donkey Kong Country",
+  "Chrono Trigger", "Super Mario Kart", "Star Fox", "EarthBound"
 };
 
-const char* playstationGames[GAMES_PER_CATEGORY] = {
-  "God of War Rag.", "Spider-Man 2", "The Last of Us", "Horizon FW", "Ghost of Tsushima",
-  "Uncharted 4", "Bloodborne", "Ratchet & Clank", "Gran Turismo 7", "Returnal",
-  "Demon's Souls", "Death Stranding", "Days Gone", "Infamous SS", "Sackboy",
-  "Detroit Bcm Human", "Until Dawn", "Shadow of Colossus", "Stellar Blade", "Final Fantasy VII"
+const char* n64Games[GAMES_PER_MODEL] = {
+  "Super Mario 64", "The Legend of Zelda: Ocarina of Time", "GoldenEye 007", "Mario Kart 64",
+  "Banjo-Kazooie", "Super Smash Bros.", "Star Fox 64", "Paper Mario"
 };
 
-const char* pcGames[GAMES_PER_CATEGORY] = {
-  "Minecraft", "Roblox", "Portal 2", "Counter-Strike 2", "Valorant",
-  "Cyberpunk 2077", "Baldur's Gate 3", "Half-Life 2", "Team Fortress 2", "League of Legends",
-  "Dota 2", "Left 4 Dead 2", "Terraria", "Stardew Valley", "Phasmophobia",
-  "Rust", "Garry's Mod", "Civilization VI", "The Witcher 3", "Factorio"
+const char* gamecubeGames[GAMES_PER_MODEL] = {
+  "Super Mario Sunshine", "The Legend of Zelda: The Wind Waker", "Metroid Prime", "Super Smash Bros. Melee",
+  "Animal Crossing", "Luigi's Mansion", "Mario Kart: Double Dash!!", "Pikmin"
 };
-  
-void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrollOffset, bool* ownedFlags);
-int  selectFromMenu(const char* items[], int itemCount, bool* ownedFlags);
+
+const char* wiiGames[GAMES_PER_MODEL] = {
+  "Wii Sports", "Super Mario Galaxy", "The Legend of Zelda: Skyward Sword", "Mario Kart Wii",
+  "Super Smash Bros. Brawl", "Xenoblade Chronicles", "Donkey Kong Country Returns", "Metroid Prime 3: Corruption"
+};
+
+const char* wiiUGames[GAMES_PER_MODEL] = {
+  "Super Mario 3D World", "Mario Kart 8", "Super Smash Bros. for Wii U", "The Legend of Zelda: Breath of the Wild",
+  "Bayonetta 2", "Splatoon", "Pikmin 3", "Donkey Kong Country: Tropical Freeze"
+};
+
+const char* switchGames[GAMES_PER_MODEL] = {
+  "The Legend of Zelda: Tears of the Kingdom", "Super Mario Odyssey", "Super Smash Bros. Ultimate", "Animal Crossing: New Horizons",
+  "Splatoon 3", "Super Mario Bros. Wonder", "Metroid Dread", "Pikmin 4"
+};
+
+// switch 2 is relatively new, and will need updating n stuff
+const char* switch2Games[GAMES_PER_MODEL] = {
+  "Mario Kart World", "Donkey Kong Bananza", "The Duskbloods", "Splatoon Raiders",
+  "Star Fox", "Metroid Prime 4: Beyond", "Fire Emblem: Fortune's Weave", "Pokemon Pokopia"
+};
+
+const char* gameboyGames[GAMES_PER_MODEL] = {
+  "Pokemon Red and Blue", "The Legend of Zelda: Link's Awakening", "Super Mario Land", "Tetris",
+  "Kirby's Dream Land", "Metroid II: Return of Samus", "Donkey Kong", "Wario Land: Super Mario Land 3"
+};
+
+const char* gbcGames[GAMES_PER_MODEL] = {
+  "Pokemon Gold and Silver", "The Legend of Zelda: Oracle of Seasons", "Super Mario Bros. Deluxe", "Wario Land 3",
+  "Pokemon Crystal", "Donkey Kong Country", "Link's Awakening DX", "Pokemon Trading Card Game"
+};
+
+const char* gbaGames[GAMES_PER_MODEL] = {
+  "Pokemon Ruby and Sapphire", "The Legend of Zelda: The Minish Cap", "Metroid Fusion", "Fire Emblem",
+  "Mario Kart: Super Circuit", "Golden Sun", "Metroid: Zero Mission", "Advance Wars"
+};
+
+const char* dsGames[GAMES_PER_MODEL] = {
+  "New Super Mario Bros.", "Pokemon Diamond and Pearl", "The Legend of Zelda: Phantom Hourglass", "Animal Crossing: Wild World",
+  "Mario Kart DS", "Nintendogs", "Professor Layton and the Curious Village", "Kirby: Canvas Curse"
+};
+
+const char* threeDSGames[GAMES_PER_MODEL] = {
+  "Pokemon X and Y", "The Legend of Zelda: Ocarina of Time 3D", "Super Mario 3D Land", "Animal Crossing: New Leaf",
+  "Fire Emblem Awakening", "Luigi's Mansion: Dark Moon", "Kirby: Triple Deluxe", "Mario Kart 7"
+};
+
+const char* virtualBoyGames[GAMES_PER_MODEL] = {
+  "Mario's Tennis", "Red Alarm", "Galactic Pinball", "Teleroboxer",
+  "Virtual Boy Wario Land", "Virtual Fishing", "3D Tetris", "Panic Bomber"
+};
+
+// pstv and vita run the same library, so pstv just points at this array too
+const char* vitaGames[GAMES_PER_MODEL] = {
+  "Persona 4 Golden", "Uncharted: Golden Abyss", "Gravity Rush", "Tearaway",
+  "Killzone: Mercenary", "WipEout 2048", "Rayman Legends", "Danganronpa: Trigger Happy Havoc"
+};
+
+const char* pspGames[GAMES_PER_MODEL] = {
+  "God of War: Chains of Olympus", "Grand Theft Auto: Liberty City Stories", "Crisis Core: Final Fantasy VII", "Patapon",
+  "LocoRoco", "Monster Hunter Freedom Unite", "Daxter", "Lumines"
+};
+
+const char* ps1Games[GAMES_PER_MODEL] = {
+  "Final Fantasy VII", "Metal Gear Solid", "Crash Bandicoot", "Resident Evil 2",
+  "Gran Turismo", "Tekken 3", "Castlevania: Symphony of the Night", "Spyro the Dragon"
+};
+
+const char* ps2Games[GAMES_PER_MODEL] = {
+  "Shadow of the Colossus", "God of War", "Grand Theft Auto: San Andreas", "Metal Gear Solid 2: Sons of Liberty",
+  "Final Fantasy X", "Kingdom Hearts", "Ratchet & Clank", "Devil May Cry"
+};
+
+const char* ps3Games[GAMES_PER_MODEL] = {
+  "The Last of Us", "Uncharted 2: Among Thieves", "God of War III", "Metal Gear Solid 4: Guns of the Patriots",
+  "Demon's Souls", "Journey", "LittleBigPlanet", "Heavy Rain"
+};
+
+const char* ps4Games[GAMES_PER_MODEL] = {
+  "Bloodborne", "Horizon Zero Dawn", "God of War", "Spider-Man",
+  "Uncharted 4: A Thief's End", "Ghost of Tsushima", "Persona 5", "Death Stranding"
+};
+
+const char* ps5Games[GAMES_PER_MODEL] = {
+  "Spider-Man 2", "God of War Ragnarok", "Ratchet & Clank: Rift Apart", "Returnal",
+  "Gran Turismo 7", "Final Fantasy VII Rebirth", "Astro Bot", "Stellar Blade"
+};
+
+const char* ogXboxGames[GAMES_PER_MODEL] = {
+  "Halo: Combat Evolved", "Fable", "Ninja Gaiden", "Jade Empire",
+  "Halo 2", "Star Wars: Knights of the Old Republic", "Conker's Bad Fur Day", "Project Gotham Racing"
+};
+
+const char* xbox360Games[GAMES_PER_MODEL] = {
+  "Halo 3", "Gears of War", "Mass Effect 2", "Fable II",
+  "Forza Motorsport 4", "Red Dead Redemption", "Halo: Reach", "Left 4 Dead"
+};
+
+// one s and one x run the same games, no exclusives between the two
+const char* xboxOneGames[GAMES_PER_MODEL] = {
+  "Halo 5: Guardians", "Forza Horizon 3", "Gears of War 4", "Sea of Thieves",
+  "Ori and the Blind Forest", "Cuphead", "Sunset Overdrive", "Quantum Break"
+};
+
+// series s and series x also run the same games
+const char* xboxSeriesGames[GAMES_PER_MODEL] = {
+  "Halo Infinite", "Forza Horizon 5", "Gears 5", "Starfield",
+  "Hi-Fi Rush", "Psychonauts 2", "Avowed", "Doom Eternal"
+};
+
+const char* pcGames[GAMES_PER_MODEL] = {
+  "Minecraft", "Roblox", "Portal 2", "Counter-Strike 2",
+  "Baldur's Gate 3", "Half-Life 2", "Stardew Valley", "The Witcher 3"
+};
+
+// maps each model index within a category to its game list.
+// duplicate entries (eg xbox one s and x both pointing at xboxOneGames) are intentional
+const char** psGameLists[PS_COUNT]       = { vitaGames, vitaGames, pspGames, ps1Games, ps2Games, ps3Games, ps4Games, ps5Games };
+const char** xboxGameLists[XBOX_COUNT]   = { ogXboxGames, xbox360Games, xboxOneGames, xboxOneGames, xboxSeriesGames, xboxSeriesGames };
+const char** nintendoGameLists[NINTENDO_COUNT] = {
+  nesGames, snesGames, n64Games, gamecubeGames, wiiGames, wiiUGames, switchGames, switch2Games,
+  gameboyGames, gbcGames, gbaGames, gbaGames, dsGames, threeDSGames, virtualBoyGames
+};
+
+void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrollOffset, bool* ownedFlags, const char* title = nullptr);
+int  selectFromMenu(const char* items[], int itemCount, bool* ownedFlags, const char* title = nullptr);
 void flushEncoderEvents();
 void waitForAnyInput();
 bool waitForClickOrRotate();
@@ -113,7 +229,7 @@ const char* modelNameFor(Category cat, int index);
 int  countOwnedInCategory(Category cat);
 int  countOwnedDevices();
 void pickRandomOwnedDevice(Category &catOut, int &modelIndexOut);
-const char* pickRandomGameForCategory(Category cat);
+const char* pickRandomGameForModel(Category cat, int modelIndex);
 void removeAllDevices();
 
 void showWelcomeScreen();
@@ -150,10 +266,19 @@ bool wakeScreenIfAsleep() {
   return false;
 }
 
-void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrollOffset, bool* ownedFlags) {
+// title is optional, if given it draws on row 0 and the item list shifts down under it
+void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrollOffset, bool* ownedFlags, const char* title) {
   display.clearDisplay();
-  for (int row = 0; row < LCD_ROWS; row++) {
-    int i = scrollOffset + row;
+
+  int firstRow = 0;
+  if (title != nullptr) {
+    display.setCursor(0, 0);
+    display.print(title);
+    firstRow = 1;
+  }
+
+  for (int row = firstRow; row < LCD_ROWS; row++) {
+    int i = scrollOffset + (row - firstRow);
     if (i >= itemCount) break;
 
     display.setCursor(0, row * CHAR_H);
@@ -174,15 +299,16 @@ void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrol
   display.display();
 }
 
-int selectFromMenu(const char* items[], int itemCount, bool* ownedFlags) {
+int selectFromMenu(const char* items[], int itemCount, bool* ownedFlags, const char* title) {
   flushEncoderEvents();
 
   int index = 0;
   int scrollOffset = 0;
+  int visibleRows = LCD_ROWS - (title != nullptr ? 1 : 0);
 
   rotaryEncoder.setBoundaries(0, itemCount - 1, true); // wrap around
   rotaryEncoder.setEncoderValue(0);
-  renderMenu(items, itemCount, index, scrollOffset, ownedFlags);
+  renderMenu(items, itemCount, index, scrollOffset, ownedFlags, title);
 
   while (true) {
     sleepScreenIfIdle();
@@ -193,7 +319,7 @@ int selectFromMenu(const char* items[], int itemCount, bool* ownedFlags) {
     if (!rotated && !clicked) continue;
 
     if (wakeScreenIfAsleep()) {
-      renderMenu(items, itemCount, index, scrollOffset, ownedFlags); // just redraw, ignore this input
+      renderMenu(items, itemCount, index, scrollOffset, ownedFlags, title); // just redraw, ignore this input
       continue;
     }
 
@@ -204,10 +330,10 @@ int selectFromMenu(const char* items[], int itemCount, bool* ownedFlags) {
 
       if (index < scrollOffset) {
         scrollOffset = index;
-      } else if (index >= scrollOffset + LCD_ROWS) {
-        scrollOffset = index - LCD_ROWS + 1;
+      } else if (index >= scrollOffset + visibleRows) {
+        scrollOffset = index - visibleRows + 1;
       }
-      renderMenu(items, itemCount, index, scrollOffset, ownedFlags);
+      renderMenu(items, itemCount, index, scrollOffset, ownedFlags, title);
     }
 
     if (clicked) {
@@ -266,34 +392,34 @@ void showResultAndWait(const char* line0, String line1) {
   waitForAnyInput();
 }
 
+// word wraps across all available rows, since full game titles can run long
 void printWrapped(String full) {
-  if (full.length() <= (unsigned int)LCD_COLS) {
-    display.setCursor(0, 0);
-    display.print(full);
-    return;
-  }
+  int row = 0;
+  int start = 0;
+  int len = full.length();
 
-  int breakAt = -1;
-  for (int i = LCD_COLS - 1; i >= 0; i--) {
-    if (full.charAt(i) == ' ') {
-      breakAt = i;
-      break;
+  while (start < len && row < LCD_ROWS) {
+    int remaining = len - start;
+    int chunkLen = min(remaining, LCD_COLS);
+
+    int breakAt = -1;
+    if (remaining > LCD_COLS) {
+      // find the last space inside this chunk so we don't cut a word in half
+      for (int i = chunkLen; i > 0; i--) {
+        if (full.charAt(start + i - 1) == ' ') {
+          breakAt = i;
+          break;
+        }
+      }
     }
-  }
+    if (breakAt == -1) breakAt = chunkLen;
 
-  unsigned int total = full.length();
-  unsigned int maxLen = (unsigned int)(LCD_COLS * LCD_ROWS);
+    display.setCursor(0, row * CHAR_H);
+    display.print(full.substring(start, start + breakAt));
 
-  if (breakAt == -1) {
-    display.setCursor(0, 0);
-    display.print(full.substring(0, LCD_COLS));
-    display.setCursor(0, CHAR_H);
-    display.print(full.substring(LCD_COLS, min(total, maxLen)));
-  } else {
-    display.setCursor(0, 0);
-    display.print(full.substring(0, breakAt));
-    display.setCursor(0, CHAR_H);
-    display.print(full.substring(breakAt + 1, min(total, maxLen)));
+    start += breakAt;
+    while (start < len && full.charAt(start) == ' ') start++; // skip the space we broke on
+    row++;
   }
 }
 
@@ -389,15 +515,20 @@ void pickRandomOwnedDevice(Category &catOut, int &modelIndexOut) {
   modelIndexOut = ownedIndices[random(0, ownedCount)];
 }
 
-const char* pickRandomGameForCategory(Category cat) {
-  int idx = random(0, GAMES_PER_CATEGORY);
+// picks a game for the exact console model, not just the brand
+const char* pickRandomGameForModel(Category cat, int modelIndex) {
+  const char** list;
+
   switch (cat) {
-    case CAT_XBOX:         return xboxGames[idx];
-    case CAT_NINTENDO:     return nintendoGames[idx];
-    case CAT_PLAYSTATION: return playstationGames[idx];
-    case CAT_COMPUTER:     return pcGames[idx];
+    case CAT_PLAYSTATION: list = psGameLists[modelIndex]; break;
+    case CAT_XBOX:         list = xboxGameLists[modelIndex]; break;
+    case CAT_NINTENDO:     list = nintendoGameLists[modelIndex]; break;
+    case CAT_COMPUTER:     list = pcGames; break;
     default:               return "";
   }
+
+  int idx = random(0, GAMES_PER_MODEL);
+  return list[idx];
 }
 
 void removeAllDevices() {
@@ -464,7 +595,7 @@ void handleGameOption() {
   }
 
   while (true) {
-    const char* game = pickRandomGameForCategory(cat);
+    const char* game = pickRandomGameForModel(cat, modelIndex);
     display.clearDisplay();
     printWrapped(String("Play ") + String(game));
     display.display();
@@ -536,7 +667,7 @@ bool configSubmenuPickOne(Category cat) {
 
 bool askAddMore() {
   const char* items[] = { "Yes", "No" };
-  int choice = selectFromMenu(items, 2, nullptr);
+  int choice = selectFromMenu(items, 2, nullptr, "Select another?");
   return choice == 0; // true = Yes
 }
 
@@ -562,7 +693,7 @@ void setup() {
   rotaryEncoder.setup(readEncoderISR, readButtonISR);
   rotaryEncoder.setAcceleration(150);
 
-  randomSeed(analogRead(34));
+  randomSeed(esp_random());
 
   registerActivity();
   showWelcomeScreen();
