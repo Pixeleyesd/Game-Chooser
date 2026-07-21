@@ -60,8 +60,9 @@ bool nintendoOwned[NINTENDO_COUNT] = { false };
 
 bool computerOwned = false;
 
-// each console gets its own game list now instead of sharing one per brand.
-// 8 games per list to keep things simple. consoles that share the exact same library in real life (PSTV/Vita, Xbox One S/X, Series S/X) just point at the same array below instead of duplicating it
+// each console gets its own game list instead of sharing one per brand.
+// consoles that genuinely share the exact same library in real life
+// (PSTV/Vita, Xbox One S/X, Series S/X) just point at the same array
 
 const int GAMES_PER_MODEL = 8;
 
@@ -100,7 +101,8 @@ const char* switchGames[GAMES_PER_MODEL] = {
   "Splatoon 3", "Super Mario Bros. Wonder", "Metroid Dread", "Pikmin 4"
 };
 
-// switch 2 is relatively new, and will need updating n stuff
+// switch 2 launched june 2025, library is still filling in through 2026 so
+// this list will need updating as more titles get confirmed
 const char* switch2Games[GAMES_PER_MODEL] = {
   "Mario Kart World", "Donkey Kong Bananza", "The Duskbloods", "Splatoon Raiders",
   "Star Fox", "Metroid Prime 4: Beyond", "Fire Emblem: Fortune's Weave", "Pokemon Pokopia"
@@ -216,6 +218,7 @@ bool waitForClickOrRotate();
 void showMessage(const char* line0, const char* line1, int delayMs);
 void showResultAndWait(const char* line0, String line1);
 void printWrapped(String full);
+bool confirmAreYouSure();
 
 void registerActivity();
 void sleepScreenIfIdle();
@@ -237,6 +240,9 @@ void mainMenu();
 void handleGameOption();
 void handleDifficultyOption();
 void handleDurationOption();
+void renderDurationPicker(int minutes);
+void renderTimerScreen(unsigned long remainingSeconds, const char* menuItems[], int menuIndex, bool paused);
+void runDurationTimer(unsigned long totalSeconds);
 void handleConfigOption();
 bool configSubmenuPickOne(Category cat);
 bool askAddMore();
@@ -423,6 +429,13 @@ void printWrapped(String full) {
   }
 }
 
+// generic yes/no confirm dialog, used by the reset and close buttons in the timer
+bool confirmAreYouSure() {
+  const char* items[] = { "Yes", "No" };
+  int choice = selectFromMenu(items, 2, nullptr, "Are you sure?");
+  return choice == 0;
+}
+
 int categoryModelCount(Category cat) {
   switch (cat) {
     case CAT_PLAYSTATION: return PS_COUNT;
@@ -553,7 +566,7 @@ void showWelcomeScreen() {
 // "input for start randomly choosing: option 1: game, option 2: difficulty,
 //  option 3: playing duration, option 4: config"
 void mainMenu() {
-  const char* items[] = { "Pick a Game", "Difficulty", "Play Duration", "Config" };
+  const char* items[] = { "Pick a Game", "Pick a Difficulty", "Set a Timer", "Config" };
   int choice = selectFromMenu(items, 4, nullptr);
 
   switch (choice) {
@@ -612,19 +625,177 @@ void handleDifficultyOption() {
   showResultAndWait("Difficulty:", String(difficulties[idx]));
 }
 
+// dial a duration in 10 min steps, click to lock it in and start the countdown
 void handleDurationOption() {
-  int totalMinutes = (int)random(4, 25) * 5; // 4*5=20 ... 24*5=120
-  int hours = totalMinutes / 60;
-  int mins = totalMinutes % 60;
+  const int STEP_MINUTES = 10;
+  const int MIN_STEPS = 1;  // 10 min
+  const int MAX_STEPS = 18; // 180 min, bump this if you want longer sessions
 
-  String line1;
-  if (hours > 0) {
-    line1 = String(hours) + "h " + String(mins) + "m";
-  } else {
-    line1 = String(mins) + " min";
+  int steps = MIN_STEPS;
+
+  rotaryEncoder.setBoundaries(MIN_STEPS, MAX_STEPS, false); // clamps at the ends, no wraparound
+  rotaryEncoder.setEncoderValue(steps);
+  flushEncoderEvents();
+
+  renderDurationPicker(steps * STEP_MINUTES);
+
+  while (true) {
+    sleepScreenIfIdle();
+
+    bool rotated = rotaryEncoder.encoderChanged();
+    bool clicked = rotaryEncoder.isEncoderButtonClicked();
+
+    if (!rotated && !clicked) continue;
+
+    if (wakeScreenIfAsleep()) {
+      renderDurationPicker(steps * STEP_MINUTES);
+      continue;
+    }
+
+    registerActivity();
+
+    if (rotated) {
+      steps = (int)rotaryEncoder.readEncoder();
+      renderDurationPicker(steps * STEP_MINUTES);
+    }
+
+    if (clicked) break;
   }
 
-  showResultAndWait("Play for:", line1);
+  runDurationTimer((unsigned long)(steps * STEP_MINUTES) * 60UL);
+}
+
+void renderDurationPicker(int minutes) {
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("Play for:");
+  display.setCursor(0, CHAR_H);
+  display.print(String(minutes) + " min");
+  display.setCursor(0, CHAR_H * 3);
+  display.print("Click to start");
+  display.display();
+}
+
+// big clock up top, pause/reset/close list underneath it
+void renderTimerScreen(unsigned long remainingSeconds, const char* menuItems[], int menuIndex, bool paused) {
+  display.clearDisplay();
+
+  unsigned int mins = remainingSeconds / 60;
+  unsigned int secs = remainingSeconds % 60;
+  char timeBuf[6];
+  snprintf(timeBuf, sizeof(timeBuf), "%02u:%02u", mins, secs);
+
+  display.setTextSize(2);
+  display.setCursor(0, 0);
+  display.print(timeBuf);
+  display.setTextSize(1);
+
+  if (paused) {
+    display.setCursor(0, 18);
+    display.print("paused");
+  }
+
+  int menuTop = 24; // pixel y where the pause/reset/close list starts
+  for (int i = 0; i < 3; i++) {
+    display.setCursor(0, menuTop + i * CHAR_H);
+    display.print(i == menuIndex ? "> " : "  ");
+    display.print(menuItems[i]);
+  }
+
+  display.display();
+}
+
+// runs the countdown itself. rotary scrolls pause/reset/close, click selects.
+// close and reset both confirm first. returns when the user closes out or time hits 0
+void runDurationTimer(unsigned long totalSeconds) {
+  const int MENU_COUNT = 3;
+  int menuIndex = 0;
+
+  unsigned long originalSeconds = totalSeconds;
+  unsigned long remainingSeconds = totalSeconds;
+  bool paused = false;
+  unsigned long lastTickMillis = millis();
+
+  rotaryEncoder.setBoundaries(0, MENU_COUNT - 1, true);
+  rotaryEncoder.setEncoderValue(menuIndex);
+  flushEncoderEvents();
+
+  const char* menuItems[] = { paused ? "Resume" : "Pause", "Reset", "Close" };
+  renderTimerScreen(remainingSeconds, menuItems, menuIndex, paused);
+
+  while (true) {
+    sleepScreenIfIdle();
+
+    // tick the clock down once a second, unless paused
+    if (!paused) {
+      unsigned long now = millis();
+      if (now - lastTickMillis >= 1000) {
+        unsigned long elapsedSecs = (now - lastTickMillis) / 1000;
+        lastTickMillis += elapsedSecs * 1000;
+
+        remainingSeconds = (elapsedSecs >= remainingSeconds) ? 0 : (remainingSeconds - elapsedSecs);
+
+        const char* tickItems[] = { "Pause", "Reset", "Close" };
+        renderTimerScreen(remainingSeconds, tickItems, menuIndex, paused);
+
+        if (remainingSeconds == 0) {
+          showMessage("Time's up!", "", 2000);
+          return;
+        }
+      }
+    } else {
+      lastTickMillis = millis(); // don't let paused time count against the clock once resumed
+    }
+
+    bool rotated = rotaryEncoder.encoderChanged();
+    bool clicked = rotaryEncoder.isEncoderButtonClicked();
+
+    if (!rotated && !clicked) continue;
+
+    if (wakeScreenIfAsleep()) {
+      const char* wakeItems[] = { paused ? "Resume" : "Pause", "Reset", "Close" };
+      renderTimerScreen(remainingSeconds, wakeItems, menuIndex, paused); // just redraw, ignore this input
+      continue;
+    }
+
+    registerActivity();
+
+    if (rotated) {
+      menuIndex = (int)rotaryEncoder.readEncoder();
+      const char* rotItems[] = { paused ? "Resume" : "Pause", "Reset", "Close" };
+      renderTimerScreen(remainingSeconds, rotItems, menuIndex, paused);
+    }
+
+    if (clicked) {
+      if (menuIndex == 0) {
+        // pause / resume
+        paused = !paused;
+        if (!paused) lastTickMillis = millis();
+      } else if (menuIndex == 1) {
+        // reset, confirm first
+        if (confirmAreYouSure()) {
+          remainingSeconds = originalSeconds;
+          lastTickMillis = millis();
+        }
+        // confirmAreYouSure changed the encoder's boundaries/value, put ours back
+        rotaryEncoder.setBoundaries(0, MENU_COUNT - 1, true);
+        rotaryEncoder.setEncoderValue(menuIndex);
+        flushEncoderEvents();
+      } else if (menuIndex == 2) {
+        // close, confirm first, nothing gets saved either way
+        bool confirmed = confirmAreYouSure();
+        if (confirmed) {
+          return;
+        }
+        rotaryEncoder.setBoundaries(0, MENU_COUNT - 1, true);
+        rotaryEncoder.setEncoderValue(menuIndex);
+        flushEncoderEvents();
+      }
+
+      const char* clickItems[] = { paused ? "Resume" : "Pause", "Reset", "Close" };
+      renderTimerScreen(remainingSeconds, clickItems, menuIndex, paused);
+    }
+  }
 }
 
 void handleConfigOption() {
