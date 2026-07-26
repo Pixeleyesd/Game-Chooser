@@ -217,7 +217,8 @@ void waitForAnyInput();
 bool waitForClickOrRotate();
 void showMessage(const char* line0, const char* line1, int delayMs);
 void showResultAndWait(const char* line0, String line1);
-void printWrapped(String full);
+void printWrapped(String full, int maxRows = LCD_ROWS);
+void printHint(const char* line0, const char* line1 = nullptr);
 bool confirmAreYouSure();
 
 void registerActivity();
@@ -270,6 +271,18 @@ bool wakeScreenIfAsleep() {
     return true;
   }
   return false;
+}
+
+// draws one or two short guide lines pinned to the bottom rows of the screen, as recommended by peer review.
+void printHint(const char* line0, const char* line1) {
+  if (line0 != nullptr) {
+    display.setCursor(0, (LCD_ROWS - 2) * CHAR_H);
+    display.print(line0);
+  }
+  if (line1 != nullptr) {
+    display.setCursor(0, (LCD_ROWS - 1) * CHAR_H);
+    display.print(line1);
+  }
 }
 
 // title is optional, if given it draws on row 0 and the item list shifts down under it
@@ -394,17 +407,17 @@ void showResultAndWait(const char* line0, String line1) {
   display.print(line0);
   display.setCursor(0, CHAR_H);
   display.print(line1);
+  printHint("Click or scroll", "to continue");
   display.display();
   waitForAnyInput();
 }
 
-// word wraps across all available rows, since full game titles can run long
-void printWrapped(String full) {
+void printWrapped(String full, int maxRows) {
   int row = 0;
   int start = 0;
   int len = full.length();
 
-  while (start < len && row < LCD_ROWS) {
+  while (start < len && row < maxRows) {
     int remaining = len - start;
     int chunkLen = min(remaining, LCD_COLS);
 
@@ -566,7 +579,7 @@ void showWelcomeScreen() {
 // "input for start randomly choosing: option 1: game, option 2: difficulty,
 //  option 3: playing duration, option 4: config"
 void mainMenu() {
-  const char* items[] = { "Pick a Game", "Pick a Difficulty", "Set a Timer", "Config" };
+  const char* items[] = { "Pick a Game", "Difficulty", "Play Duration", "Config" };
   int choice = selectFromMenu(items, 4, nullptr);
 
   switch (choice) {
@@ -601,6 +614,7 @@ void handleGameOption() {
   display.print(model);
   display.setCursor(0, CHAR_H);
   display.print("Click to choose!");
+  printHint("Scroll: cancel", nullptr);
   display.display();
 
   if (!waitForClickOrRotate()) {
@@ -610,7 +624,8 @@ void handleGameOption() {
   while (true) {
     const char* game = pickRandomGameForModel(cat, modelIndex);
     display.clearDisplay();
-    printWrapped(String("Play ") + String(game));
+    printWrapped(String("Play ") + String(game), LCD_ROWS - 2); // leave the bottom 2 rows for the hint
+    printHint("Scroll: back", "Click: new game");
     display.display();
 
     if (!waitForClickOrRotate()) {
@@ -671,12 +686,10 @@ void renderDurationPicker(int minutes) {
   display.print("Play for:");
   display.setCursor(0, CHAR_H);
   display.print(String(minutes) + " min");
-  display.setCursor(0, CHAR_H * 3);
-  display.print("Click to start");
+  printHint("Scroll: adjust", "Click: start");
   display.display();
 }
 
-// big clock up top, pause/reset/close list underneath it
 void renderTimerScreen(unsigned long remainingSeconds, const char* menuItems[], int menuIndex, bool paused) {
   display.clearDisplay();
 
