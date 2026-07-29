@@ -210,8 +210,10 @@ const char** nintendoGameLists[NINTENDO_COUNT] = {
   gameboyGames, gbcGames, gbaGames, gbaGames, dsGames, threeDSGames, virtualBoyGames
 };
 
-void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrollOffset, bool* ownedFlags, const char* title = nullptr);
-int  selectFromMenu(const char* items[], int itemCount, bool* ownedFlags, const char* title = nullptr);
+void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrollOffset, bool* ownedFlags,
+                const char* title = nullptr, const char* hint0 = nullptr, const char* hint1 = nullptr);
+int  selectFromMenu(const char* items[], int itemCount, bool* ownedFlags,
+                     const char* title = nullptr, const char* hint0 = nullptr, const char* hint1 = nullptr);
 void flushEncoderEvents();
 void waitForAnyInput();
 bool waitForClickOrRotate();
@@ -273,7 +275,8 @@ bool wakeScreenIfAsleep() {
   return false;
 }
 
-// draws one or two short guide lines pinned to the bottom rows of the screen, as recommended by peer review.
+// draws one or two short guide lines pinned to the bottom rows of the screen,
+// eg "Scroll: back" / "Click: new game". call this before display.display()
 void printHint(const char* line0, const char* line1) {
   if (line0 != nullptr) {
     display.setCursor(0, (LCD_ROWS - 2) * CHAR_H);
@@ -285,8 +288,10 @@ void printHint(const char* line0, const char* line1) {
   }
 }
 
-// title is optional, if given it draws on row 0 and the item list shifts down under it
-void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrollOffset, bool* ownedFlags, const char* title) {
+// title draws on row 0 and pushes the list down. hint0/hint1 pin to the
+// bottom rows and shrink the list from below, same idea, opposite end
+void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrollOffset, bool* ownedFlags,
+                const char* title, const char* hint0, const char* hint1) {
   display.clearDisplay();
 
   int firstRow = 0;
@@ -296,7 +301,10 @@ void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrol
     firstRow = 1;
   }
 
-  for (int row = firstRow; row < LCD_ROWS; row++) {
+  bool hasHint = (hint0 != nullptr || hint1 != nullptr);
+  int lastRow = LCD_ROWS - (hasHint ? 2 : 0);
+
+  for (int row = firstRow; row < lastRow; row++) {
     int i = scrollOffset + (row - firstRow);
     if (i >= itemCount) break;
 
@@ -315,19 +323,23 @@ void renderMenu(const char* items[], int itemCount, int selectedIndex, int scrol
     }
     display.print(label);
   }
+
+  if (hasHint) printHint(hint0, hint1);
+
   display.display();
 }
 
-int selectFromMenu(const char* items[], int itemCount, bool* ownedFlags, const char* title) {
+int selectFromMenu(const char* items[], int itemCount, bool* ownedFlags, const char* title, const char* hint0, const char* hint1) {
   flushEncoderEvents();
 
   int index = 0;
   int scrollOffset = 0;
-  int visibleRows = LCD_ROWS - (title != nullptr ? 1 : 0);
+  bool hasHint = (hint0 != nullptr || hint1 != nullptr);
+  int visibleRows = LCD_ROWS - (title != nullptr ? 1 : 0) - (hasHint ? 2 : 0);
 
   rotaryEncoder.setBoundaries(0, itemCount - 1, true); // wrap around
   rotaryEncoder.setEncoderValue(0);
-  renderMenu(items, itemCount, index, scrollOffset, ownedFlags, title);
+  renderMenu(items, itemCount, index, scrollOffset, ownedFlags, title, hint0, hint1);
 
   while (true) {
     sleepScreenIfIdle();
@@ -338,7 +350,7 @@ int selectFromMenu(const char* items[], int itemCount, bool* ownedFlags, const c
     if (!rotated && !clicked) continue;
 
     if (wakeScreenIfAsleep()) {
-      renderMenu(items, itemCount, index, scrollOffset, ownedFlags, title); // just redraw, ignore this input
+      renderMenu(items, itemCount, index, scrollOffset, ownedFlags, title, hint0, hint1); // just redraw, ignore this input
       continue;
     }
 
@@ -352,7 +364,7 @@ int selectFromMenu(const char* items[], int itemCount, bool* ownedFlags, const c
       } else if (index >= scrollOffset + visibleRows) {
         scrollOffset = index - visibleRows + 1;
       }
-      renderMenu(items, itemCount, index, scrollOffset, ownedFlags, title);
+      renderMenu(items, itemCount, index, scrollOffset, ownedFlags, title, hint0, hint1);
     }
 
     if (clicked) {
@@ -412,6 +424,8 @@ void showResultAndWait(const char* line0, String line1) {
   waitForAnyInput();
 }
 
+// word wraps across up to maxRows rows, since full game titles can run long.
+// leave maxRows smaller than LCD_ROWS if you're also drawing a hint underneath
 void printWrapped(String full, int maxRows) {
   int row = 0;
   int start = 0;
@@ -445,7 +459,7 @@ void printWrapped(String full, int maxRows) {
 // generic yes/no confirm dialog, used by the reset and close buttons in the timer
 bool confirmAreYouSure() {
   const char* items[] = { "Yes", "No" };
-  int choice = selectFromMenu(items, 2, nullptr, "Are you sure?");
+  int choice = selectFromMenu(items, 2, nullptr, "Are you sure?", "Scroll: choose", "Click: confirm");
   return choice == 0;
 }
 
@@ -580,7 +594,7 @@ void showWelcomeScreen() {
 //  option 3: playing duration, option 4: config"
 void mainMenu() {
   const char* items[] = { "Pick a Game", "Difficulty", "Play Duration", "Config" };
-  int choice = selectFromMenu(items, 4, nullptr);
+  int choice = selectFromMenu(items, 4, nullptr, nullptr, "Scroll: select", "Click: choose");
 
   switch (choice) {
     case 0: handleGameOption();       break;
@@ -690,6 +704,8 @@ void renderDurationPicker(int minutes) {
   display.display();
 }
 
+// big clock up top, pause/reset/close list underneath it, hint tucked in the
+// two rows left free below the list
 void renderTimerScreen(unsigned long remainingSeconds, const char* menuItems[], int menuIndex, bool paused) {
   display.clearDisplay();
 
@@ -714,6 +730,8 @@ void renderTimerScreen(unsigned long remainingSeconds, const char* menuItems[], 
     display.print(i == menuIndex ? "> " : "  ");
     display.print(menuItems[i]);
   }
+
+  printHint("Scroll: menu", "Click: select");
 
   display.display();
 }
@@ -814,7 +832,7 @@ void runDurationTimer(unsigned long totalSeconds) {
 void handleConfigOption() {
   while (true) {
     const char* items[] = { "Playstation", "Xbox", "Nintendo", "Computer", "Remove All" };
-    int choice = selectFromMenu(items, 5, nullptr);
+    int choice = selectFromMenu(items, 5, nullptr, nullptr, "Scroll: select", "Click: choose");
     bool keepConfiguring = true;
 
     switch (choice) {
@@ -842,7 +860,7 @@ bool configSubmenuPickOne(Category cat) {
   const char** items = categoryModelNames(cat);
   bool* owned = categoryOwnedArray(cat);
 
-  int choice = selectFromMenu(items, count, owned);
+  int choice = selectFromMenu(items, count, owned, nullptr, "Click: add device", "* = already added");
   owned[choice] = true;
 
   showMessage("Added:", items[choice], 1200);
@@ -851,7 +869,7 @@ bool configSubmenuPickOne(Category cat) {
 
 bool askAddMore() {
   const char* items[] = { "Yes", "No" };
-  int choice = selectFromMenu(items, 2, nullptr, "Select another?");
+  int choice = selectFromMenu(items, 2, nullptr, "Select another?", "Scroll: choose", "Click: confirm");
   return choice == 0; // true = Yes
 }
 
