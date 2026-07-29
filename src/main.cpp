@@ -831,8 +831,8 @@ void runDurationTimer(unsigned long totalSeconds) {
 
 void handleConfigOption() {
   while (true) {
-    const char* items[] = { "Playstation", "Xbox", "Nintendo", "Computer", "Remove All" };
-    int choice = selectFromMenu(items, 5, nullptr, nullptr, "Scroll: select", "Click: choose");
+    const char* items[] = { "Playstation", "Xbox", "Nintendo", "Computer", "Remove All", "Back" };
+    int choice = selectFromMenu(items, 6, nullptr, nullptr, "Scroll: select", "Click: choose");
     bool keepConfiguring = true;
 
     switch (choice) {
@@ -849,6 +849,9 @@ void handleConfigOption() {
         showMessage("All devices", "removed", 1200);
         keepConfiguring = true;
         break;
+      case 5:
+        keepConfiguring = false; // back out to the main menu
+        break;
     }
 
     if (!keepConfiguring) return;
@@ -857,12 +860,27 @@ void handleConfigOption() {
 
 bool configSubmenuPickOne(Category cat) {
   int count = categoryModelCount(cat);
-  const char** items = categoryModelNames(cat);
+  const char** modelNames = categoryModelNames(cat);
   bool* owned = categoryOwnedArray(cat);
 
-  int choice = selectFromMenu(items, count, owned, nullptr, "Click: add device", "* = already added");
-  owned[choice] = true;
+  // local copy of the model list with a "back" option tacked on at the end.
+  // sized for the biggest category (nintendo) plus one so it fits everything
+  const char* items[NINTENDO_COUNT + 1];
+  bool ownedExt[NINTENDO_COUNT + 1];
+  for (int i = 0; i < count; i++) {
+    items[i] = modelNames[i];
+    ownedExt[i] = owned[i];
+  }
+  items[count] = "Back";
+  ownedExt[count] = false;
 
+  int choice = selectFromMenu(items, count + 1, ownedExt, nullptr, "Click: add device", "* = already added");
+
+  if (choice == count) {
+    return true; // back to the config category menu, nothing added
+  }
+
+  owned[choice] = true;
   showMessage("Added:", items[choice], 1200);
   return askAddMore();
 }
