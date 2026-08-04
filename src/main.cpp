@@ -101,8 +101,6 @@ const char* switchGames[GAMES_PER_MODEL] = {
   "Splatoon 3", "Super Mario Bros. Wonder", "Metroid Dread", "Pikmin 4"
 };
 
-// switch 2 launched june 2025, library is still filling in through 2026 so
-// this list will need updating as more titles get confirmed
 const char* switch2Games[GAMES_PER_MODEL] = {
   "Mario Kart World", "Donkey Kong Bananza", "The Duskbloods", "Splatoon Raiders",
   "Star Fox", "Metroid Prime 4: Beyond", "Fire Emblem: Fortune's Weave", "Pokemon Pokopia"
