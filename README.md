@@ -19,9 +19,9 @@ Generic ESP32 DevKit, 5V power required.
 Requires a 5V power source for the device and all components to function properly. I am currently using a USB-C cable for development, however you can use any 5V battery.
 
 ## Circuit Example
-![circuitexample](circuitexample.png)
+![circuitexample](images/circuitexample.png)
 ## Circuit Diagram
-![circuitdiagram](circuitdiagram.png)
+![circuitdiagram](images/circuitdiagram.png)
 
 ## Relevant Implications
 ### Usability
