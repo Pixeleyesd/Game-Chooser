@@ -23,13 +23,11 @@ The back panel screws will be slightly smaller than 2mm due to print tolerance, 
 
 The firmware is written in C++.
 
-Simply flash the .cpp file I have included in the firmware folder using PlatformIO or Arduino IDE. If using either of these, you can check platformio.ini for the platform. The board is simply a generic ESP32 Development Board and I have included the libraries you need to install below.
+Simply flash the .cpp file I have included in the firmware folder using PlatformIO or Arduino IDE. If using either of these, you can check platformio.ini for any of the details not explained here. The board is simply a generic ESP32 Development Board, I have included the libraries you need to install below.
 
 ### Required Libraries
 
-marcoschwartz/LiquidCrystal_I2C@^1.1.4
 igorantolic/Ai Esp32 Rotary Encoder@^1.7
-smougenot/TM1637@0.0.0-alpha+sha.9486982048
 adafruit/Adafruit SSD1306@^2.5.17
 adafruit/Adafruit GFX Library@^1.12.6
 
