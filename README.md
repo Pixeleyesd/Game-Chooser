@@ -10,13 +10,15 @@ Generic MicroSD Card Reader, uses 3V3
 Rotary encoder HW-040, uses 3V3
 
 ### OLED Display
-128x64 OLED (GM009605v4.3), uses 5V power, monochrome
+128x64 OLED (GM009605v4.3), uses 5V or 3.3V power, monochrome
 
 ### ESP32
-Generic ESP32 DevKit, 5V power required.
+Generic ESP32 DevKit, 5V OR 3.3V power required.
 
 ## Power Supply
 Requires a 5V power source for the device and all components to function properly. I am currently using a USB-C cable for development, however you can use any 5V battery.
+
+Alternatively, you can also use a 3V pair of AA batteries wired in series (as shown in the example) or some form of other 3V or 3.3V battery.
 
 ## Breadboard Example
 ![breadboardexample](images/circuitexample.png)
