@@ -1,0 +1,190 @@
+#include <Arduino.h>
+#include <AiEsp32RotaryEncoder.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// --- Pin Definitions ---
+#define ROTARY_ENCODER_A_PIN 4
+#define ROTARY_ENCODER_B_PIN 16
+#define ROTARY_ENCODER_BUTTON_PIN 17
+#define ROTARY_ENCODER_VCC_PIN -1
+#define ROTARY_ENCODER_STEPS 4
+
+// --- Initialize Components ---
+AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(
+  ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN,
+  ROTARY_ENCODER_BUTTON_PIN, ROTARY_ENCODER_VCC_PIN,
+  ROTARY_ENCODER_STEPS
+);
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// --- State Machine ---
+enum MenuState { MAIN_MENU, GAME_SELECT };
+MenuState currentState = MAIN_MENU;
+
+// --- Menu Configuration ---
+const char* platforms[] = { "Xbox", "Nintendo", "PlayStation", "PC" };
+const int PLATFORM_COUNT = 4;
+const int LCD_ROWS = 2;
+
+int selectedPlatformIndex = 0;
+int scrollOffset = 0;
+
+// --- Game Lists (20 games each) ---
+const char* xboxGames[] = {
+  "Halo Infinite", "Forza Horizon 5", "Gears 5", "Sea of Thieves", "Starfield",
+  "Fable", "Psychonauts 2", "Doom Eternal", "Ori & Will of Wisps", "Hi-Fi Rush",
+  "Quantum Break", "Sunset Overdrive", "State of Decay 2", "Scorn", "Pentiment",
+  "Ryse", "Killer Instinct", "Redfall", "Avowed", "Tony Hawk's Pro Skater 1+2 Remake"
+};
+
+const char* nintendoGames[] = {
+  "Zelda: Tears of the Kingdom", "Zelda: Breath of the Wild", "Super Mario Odyssey", "Smash Ultimate", "Mario Kart 8",
+  "Metroid Dread", "Animal Crossing", "Pokemon Scarlet", "Luigi Mansion 3", "Splatoon 3",
+  "Fire Emblem Eng", "Xenoblade 3", "Donkey Kong Tropical Freeze", "Pikmin 4", "Mario Wonder",
+  "Paper Mario TTYD", "Metroid Prime Resurrection", "Kirby Forgotten Land", "Bayonetta 3", "Astral Chain"
+};
+
+const char* playstationGames[] = {
+  "God of War Ragnarok", "Spider-Man 2", "The Last of Us", "Horizon FW", "Ghost of Tsushima",
+  "Uncharted 4", "Bloodborne", "Ratchet & Clank", "Gran Turismo 7", "Returnal",
+  "Demon's Souls", "Death Stranding", "Days Gone", "Infamous SS", "Sackboy",
+  "Detroit Become Human", "Until Dawn", "Shadow of the Colossus", "Stellar Blade", "Final Fantasy VII"
+};
+
+const char* pcGames[] = {
+  "Minecraft", "Roblox", "Portal 2", "Counter-Strike 2", "Valorant",
+  "Cyberpunk 2077", "Baldur's Gate 3", "Half-Life 2", "Team Fortress 2", "League of Legends",
+  "Dota 2", "Left 4 Dead 2", "Terraria", "Stardew Valley", "Phasmophobia",
+  "Rust", "Garry's Mod", "Civilization VI", "The Witcher 3", "Factorio"
+};
+
+const int GAMES_PER_PLATFORM = 20;
+
+// --- Interrupt Service Routines ---
+void IRAM_ATTR readEncoderISR() { rotaryEncoder.readEncoder_ISR(); }
+void IRAM_ATTR readButtonISR()  { rotaryEncoder.readButton_ISR(); }
+
+// --- Helper function to cleanly wrap text over two lines ---
+void printGame(String game) {
+  String full = "Play " + game;
+
+  if (full.length() <= 16) {
+    lcd.setCursor(0, 0);
+    lcd.print(full);
+    return;
+  }
+
+  int breakAt = -1;
+  for (int i = 15; i >= 0; i--) {
+    if (full.charAt(i) == ' ') {
+      breakAt = i;
+      break;
+    }
+  }
+
+  if (breakAt == -1) {
+    lcd.setCursor(0, 0);
+    lcd.print(full.substring(0, 16));
+    lcd.setCursor(0, 1);
+    lcd.print(full.substring(16));
+  } else {
+    lcd.setCursor(0, 0);
+    lcd.print(full.substring(0, breakAt));
+    lcd.setCursor(0, 1);
+    lcd.print(full.substring(breakAt + 1));
+  }
+}
+
+// --- Menu Rendering ---
+void renderMainMenu() {
+  lcd.clear();
+  for (int row = 0; row < LCD_ROWS; row++) {
+    int i = scrollOffset + row;
+    if (i >= PLATFORM_COUNT) break;
+    lcd.setCursor(0, row);
+    if (i == selectedPlatformIndex) {
+      lcd.print("> ");
+    } else {
+      lcd.print("  ");
+    }
+    lcd.print(platforms[i]);
+  }
+}
+
+void pickRandomGame() {
+  int index = random(0, GAMES_PER_PLATFORM);
+  String chosenGame = "";
+
+  switch (selectedPlatformIndex) {
+    case 0: chosenGame = String(xboxGames[index]); break;
+    case 1: chosenGame = String(nintendoGames[index]); break;
+    case 2: chosenGame = String(playstationGames[index]); break;
+    case 3: chosenGame = String(pcGames[index]); break;
+  }
+
+  lcd.clear();
+  printGame(chosenGame);
+}
+
+// --- Setup ---
+void setup() {
+  Serial.begin(115200);
+
+  lcd.init();
+  lcd.backlight();
+
+  rotaryEncoder.begin();
+  rotaryEncoder.setup(readEncoderISR, readButtonISR);
+  
+  // Set initial encoder boundary for the main platform menu
+  rotaryEncoder.setBoundaries(0, PLATFORM_COUNT - 1, true);
+  rotaryEncoder.setAcceleration(150);
+
+  randomSeed(analogRead(34));
+
+  renderMainMenu();
+}
+
+// --- Main Loop ---
+void loop() {
+  // Handle Encoder Rotation
+  if (rotaryEncoder.encoderChanged()) {
+    if (currentState == MAIN_MENU) {
+      selectedPlatformIndex = rotaryEncoder.readEncoder();
+
+      if (selectedPlatformIndex < scrollOffset)
+        scrollOffset = selectedPlatformIndex;
+      else if (selectedPlatformIndex >= scrollOffset + LCD_ROWS)
+        scrollOffset = selectedPlatformIndex - LCD_ROWS + 1;
+
+      renderMainMenu();
+    }
+    else if (currentState == GAME_SELECT) {
+      // If they turn the wheel while looking at a game, send them back to the menu
+      currentState = MAIN_MENU;
+      rotaryEncoder.setBoundaries(0, PLATFORM_COUNT - 1, true);
+      rotaryEncoder.setEncoderValue(selectedPlatformIndex);
+      renderMainMenu();
+    }
+  }
+
+  // Handle Button Press
+  if (rotaryEncoder.isEncoderButtonClicked()) {
+    if (currentState == MAIN_MENU) {
+      // Platform selected! Move to random game selection screen
+      currentState = GAME_SELECT;
+      
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print(platforms[selectedPlatformIndex]);
+      lcd.setCursor(0, 1);
+      lcd.print("Click to roll!");
+    } 
+    else if (currentState == GAME_SELECT) {
+      // Already in the sub-menu, roll for a game
+      pickRandomGame();
+    }
+  }
+}
