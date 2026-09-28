@@ -1,5 +1,11 @@
 # Game-Chooser
 
+Game-Chooser is a piece of hardware that chooses games for you, using random functions, with a configuration menu for you to confirm which devices you have, so it can decide for you.
+
+## Why did I make this?
+
+I made this to introduce me to ESP32s, as well as being a cool piece of hardware I would use in my every day life. I have consulted a few of my friends about whether they would use something like this, and 6 out of 8 of them said they would also use this. It helps with indecision when deciding which games to play, as well as taking one more decision off the end user.
+
 ## Case
 
 Designed with OnShape
