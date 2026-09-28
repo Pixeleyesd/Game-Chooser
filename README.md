@@ -39,7 +39,7 @@ adafruit/Adafruit GFX Library@^1.12.6
 
 ## Assembly
 
-### PLEASE NOTE, there may not be enough GND and 3V3 pins for all of the components, you may need to solder a few wires together in order for all components to have GND and power.
+#### PLEASE NOTE: there may not be enough GND and 3V3 pins for all of the components, you may need to solder a few wires together in order for all components to have GND and power.
 
 Bill of Materials (BOM):
 
